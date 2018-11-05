@@ -1,0 +1,58 @@
+---
+title: "Lab 4"
+author: "Lucas Vieira"
+output: html_document
+---
+
+## Importando bibliotecas
+```{r}
+library(tidyverse)
+library(caret)
+```
+
+## Lendo os dados de treino e teste.
+```{r}
+train <- read_csv("train.csv")
+test <- read_csv("test.csv")
+```
+
+## Removendo variáveis categóricas dos dados de treino, pois são irrelevantes para a regressão.
+```{r}
+train <- train %>% select(-nome, -uf, -estado_civil, 
+                          -partido, -ocupacao,-ano, 
+                          -cargo,-grau,-sexo, 
+                          -sequencial_candidato)
+```
+
+## Usando regrassão ridge para treinar o modelo.
+```{r}
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10)
+
+lambdaGrid <- expand.grid(lambda = 10^seq(10, -2, length=100))
+
+# modelo utilizando regressão ridge
+model <- train(votos ~ ., 
+               data = train,
+               method = "ridge",
+               trControl = fitControl,
+               preProcess = c('scale', 'center'),
+               tuneGrid = lambdaGrid,
+               na.action = na.omit)
+```
+
+## Importância das variáveis.
+
+```{r}
+ggplot(varImp(model))
+```
+
+## Gerando csv com a predição (mandar pro Kaggle).
+```{r}
+prediction <- predict(model, test)  
+data_out <- data.frame(ID = test$sequencial_candidato, votos = prediction) 
+data_out$ID <-as.character(data_out$ID)  
+data_out %>% write_csv(path = "out.csv") 
+prediction
+```
