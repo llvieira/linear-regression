@@ -4,19 +4,18 @@ author: "Lucas Vieira"
 output: html_document
 ---
 
-## Importando bibliotecas
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(caret)
 ```
 
-## Lendo os dados de treino e teste.
+## Lendo os dados de treino e teste
 ```{r}
 train <- read.csv("train.csv")
 test <- read.csv("test.csv")
 ```
 
-## Removendo variáveis categóricas dos dados de treino, pois são irrelevantes para a regressão.
+## Removendo variáveis categóricas dos dados de treino, pois são irrelevantes para a regressão
 ```{r}
 train <- train %>% select(-nome, -uf, -estado_civil, 
                           -partido, -ocupacao,-ano, 
@@ -24,7 +23,7 @@ train <- train %>% select(-nome, -uf, -estado_civil,
                           -sequencial_candidato)
 ```
 
-## Usando regrassão ridge para treinar o modelo.
+## Usando regrassão ridge para treinar o modelo
 ```{r}
 fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
 
@@ -73,14 +72,45 @@ plot(model_knn)
 ```
 
 
-## Importância das variáveis.
+## Comparação dos três modelos em termos do erro RMSE de validação cruzada
 
 ```{r}
-ggplot(varImp(model))
-ggplot(varImp(model_lasso))
+summary(resamples(list(RIDGE = model, LASSO = model_lasso, KNN = model_knn)))
 ```
 
-## Gerando csv com a predição (mandar pro Kaggle).
+Pelo sumário acima, podemos notar que o KNN possui o menor RMSE entre as regressões Ridge e Lasso. Isso mostra que o KNN é um bom modelo para representar os dados.
+
+## Importância das variáveis
+```{r}
+ggplot(varImp(model)) + ggtitle("Ridge - Impostância das Variáveis") + theme_bw()
+```
+```{r}
+ggplot(varImp(model_lasso)) + ggtitle("Lasso - Impostância das Variáveis") + theme_bw()
+```
+
+```{r}
+predictors <- predictors(model_lasso)
+predictors
+```
+
+Tanto para o modelo de regressão Ridge quando para o Lasso, as variáveis *total_receita*, *toral_despesa* e *recursos_de_pessoas_juridicas* são as mais importantes como mostra os gráficos de barra acima. No modelo Lasso todas as outras variáveis foram descartadas, exceto *recursos_de_pessoas_fisicas*, *recursos_de_pessoas_juridicas* e *total_despesa*.
+
+## Re-treinando KNN com variáveis mais importante segundo o modelo Lasso
+```{r}
+filteredTrain <- train %>% 
+         select(predictors, votos)
+
+model_knn <- train(votos ~ ., 
+                     data = filteredTrain, 
+                     method = "knn", 
+                     tuneGrid = k,
+                     preProc = c("center", "scale"),
+                     trControl = fitControl)
+
+plot(model_knn)
+```
+
+## Gerando CSV a partir da predição usando os dados de teste
 ```{r}
 prediction <- predict(model_knn, test)  
 data_out <- data.frame(ID = test$sequencial_candidato, votos = prediction) 
