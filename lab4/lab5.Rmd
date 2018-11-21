@@ -1,0 +1,72 @@
+---
+title: "Lab 5"
+author: "Lucas Vieira"
+output: html_document
+---
+
+## https://github.com/hadrizia/data-analysis-labs/blob/master/Lab03/Lab03-Hadrizia.Rmd
+## https://www.r-bloggers.com/dealing-with-unbalanced-data-in-machine-learning/
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(caret)
+```
+
+## Lendo os dados de treino e teste
+```{r}
+input <- read.csv("train.csv")
+#test_data <- read.csv("test.csv")
+```
+
+## Removendo variáveis categóricas dos dados de treino, pois são irrelevantes para a regressão
+```{r}
+input <- input %>% select(-nome, -uf, -estado_civil, 
+                          -partido, -ocupacao,-ano, 
+                          -cargo,-grau,-sexo, 
+                          -sequencial_candidato)
+```
+
+```{r}
+dataPartition <- createDataPartition(y = input$situacao, p=0.75, list=FALSE)
+
+set.seed(9560)
+## separando o dataframe em treino e teste
+train_data <- input[dataPartition, ]
+test_data <- input[-dataPartition, ]
+```
+
+## First question
+```{r}
+cont_nao_eleito <- input %>% select(situacao) %>% filter(situacao == 'nao_eleito') %>% nrow()
+cont_eleito <- input %>% select(situacao) %>% filter(situacao == 'eleito') %>% nrow()
+df = data.frame(situacao = c("eleito", "não eleito"), count = c(cont_eleito, cont_nao_eleito)) 
+ggplot(df, aes(x="", y=count, fill=situacao))+
+geom_bar(width = 1, stat = "identity") +
+   coord_polar("y", start=0)
+```
+
+An unbalanced dataset will bias the prediction model towards the more common class!
+
+## Second question
+```{r}
+# usando validação cruzada 10-fold com 5 repetições
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 5,
+                           classProbs = TRUE)
+```
+
+```{r warning=FALSE} 
+# logistic regression
+reg_logistica <- glm(formula=situacao~., data = train_data, family=binomial)
+
+#https://stat.ethz.ch/pipermail/r-help/2007-March/126643.html -- response type
+final <- data.frame(actual = test_data$situacao,
+                    predict(reg_logistica, newdata = test_data, type = "response"))
+colnames(final)[colnames(final)=="predict.reg_logistica..newdata...test_data..type....response.."] <- "value"
+ 
+final$predict <- ifelse(final$value > 0.5, "eleito", "nao_eleito")
+
+summary(reg_logistica)
+```
+
