@@ -37,12 +37,9 @@ test_data <- input[-dataPartition, ]
 
 ## First question
 ```{r}
-cont_nao_eleito <- input %>% select(situacao) %>% filter(situacao == 'nao_eleito') %>% nrow()
-cont_eleito <- input %>% select(situacao) %>% filter(situacao == 'eleito') %>% nrow()
-df = data.frame(situacao = c("eleito", "não eleito"), count = c(cont_eleito, cont_nao_eleito)) 
-ggplot(df, aes(x="", y=count, fill=situacao))+
-geom_bar(width = 1, stat = "identity") +
-   coord_polar("y", start=0)
+input %>% group_by(situacao) %>% 
+  summarise(p_eleitos=(n()/nrow(input) * 100)) %>% 
+  ggplot(aes(x=situacao, y=p_eleitos, fill=situacao)) + geom_col()
 ```
 
 An unbalanced dataset will bias the prediction model towards the more common class!
@@ -54,6 +51,17 @@ fitControl <- trainControl(method = "repeatedcv",
                            number = 10,
                            repeats = 5,
                            classProbs = TRUE)
+```
+
+```{r}
+k <- expand.grid(k = seq(20, 100, length=81))
+model_knn <- train(situacao ~ ., 
+                     data = input, 
+                     method = "knn", 
+                     tuneGrid = k,
+                     preProc = c("center", "scale"),
+                     trControl = fitControl)
+plot(model_knn)
 ```
 
 ```{r warning=FALSE} 
