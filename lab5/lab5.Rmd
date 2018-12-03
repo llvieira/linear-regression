@@ -1,0 +1,164 @@
+---
+title: "Lab 5"
+author: "Lucas Vieira"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(caret)
+library(DMwR)
+library(rpart)
+```
+
+## Leitura dos dados de treino e teste
+```{r}
+input <- read.csv("train.csv")
+#test_data <- read.csv("test.csv")
+```
+
+## Removendo variáveis categóricas dos dados de treino, pois são irrelevantes para a regressão
+```{r}
+input <- input %>% select(-nome, -uf, -estado_civil, 
+                          -partido, -ocupacao,-ano, 
+                          -cargo,-grau,-sexo, 
+                          -sequencial_candidato)
+```
+
+## Partitionamento dos dados de treino em teste e treino
+```{r}
+dataPartition <- createDataPartition(y = input$situacao, p=0.75, list=FALSE)
+
+set.seed(9560)
+## separando o dataframe em treino e teste
+train_data <- input[dataPartition, ]
+test_data <- input[-dataPartition, ]
+```
+
+## Há desbalanceamento das classes (isto é, uma classe tem muito mais instâncias que outra)? Em que proporção?
+```{r}
+input %>% group_by(situacao) %>% 
+  summarise(p_eleitos=(n()/nrow(input) * 100)) %>% 
+  ggplot(aes(x=situacao, y=p_eleitos, fill=situacao)) + geom_col()
+
+table(input$situacao)
+```
+
+Como podemos ver no gráfico de barras acima, existe sim um grande desbalanceamento de classes em relação a situação do candidato, sendo a classe *nao_eleito* a que contém mais instâncias, por volta de 70% maior que a classe de *eleito*.
+
+## Quais efeitos colaterais o desbalanceamento de classes pode causar no classificador? Como você poderia tratar isso?
+
+Um conjunto de dados desbalanceado influenciará o modelo de previsão para a classe mais comum, ou seja, a disparidade nas frequências das classes observadas pode ter um impacto negativo significativo no ajuste do modelo. Uma técnica para resolver esse desequilíbrio de classe é "subamostrar" os dados de treinamento de uma maneira que mitigue os problemas.
+
+Existem basicamente três métodos de amostragem para mitigar esse problema:
+
+**down-sampling**: irá aleatoriamente coletar um conjunto de dados para que todas as classes tenham a mesma frequência que a classe minoritária. O caret contém uma função (downSample) para fazer isso.
+
+**up-sampling**: amostrar aleatoriamente (com substituição) a classe minoritária para o mesmo tamanho da classe majoritária. O caret contém uma função (upSample) para fazer isso.
+
+**métodos híbridos**: técnicas como SMOTE e ROSE reduzem a amostragem da maioria das classes e sintetizam novos pontos de dados na classe minoritária. Existem dois pacotes (DMwR e ROSE) que implementam esses procedimentos. Logo abaixo nós usamos o SMOTE como forma de balancear as classes.
+
+```{r}
+train_data <- train_data %>% select(-recursos_de_outros_candidatos.comites, -recursos_de_partido_politico, -recursos_de_pessoas_fisicas, -recursos_de_pessoas_juridicas, -recursos_proprios)
+
+smote_train <- SMOTE(situacao ~ ., data  = train_data)                         
+table(smote_train$situacao) 
+```
+
+## Treine: um modelo de KNN, regressão logística, uma árvore de decisão e um modelo de adaboost. Tune esses modelos usando validação cruzada e controle overfitting se necessário, considerando as particularidades de cada modelo.
+
+```{r}
+# usando validação cruzada 10-fold com 5 repetições
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 5,
+                           classProbs = TRUE)
+```
+
+## Modelo de KNN
+
+```{r}
+k <- expand.grid(k = seq(20, 100, length=81))
+knn_model <- train(situacao ~ ., 
+                   data = input, 
+                   method = "knn", 
+                   tuneGrid = k, 
+                   preProc = c("center", "scale"), 
+                   trControl = fitControl)
+
+plot(knn_model)
+```
+
+## Regressão Logística
+
+```{r warning=FALSE}
+reg_logistica <- glm(formula=situacao~.,
+                     data = smote_train, 
+                     family=binomial)
+
+plot(reg_logistica)
+```
+
+## Árvore de decisão
+
+```{r}
+decision_tree <- train(x = smote_train[, names(smote_train) != "situacao"],
+                       y = smote_train$situacao,
+                       method = "rpart",
+                       trControl = fitControl,
+                       control = rpart.control(cp = 0.4))
+
+plot(decision_tree)
+```
+
+## Modelo de Adaboost
+
+```{r}
+adaboost <- train(x = smote_train[, names(smote_train) != "situacao"],
+                  y = smote_train$situacao,
+                  method = "adaboost",
+                  trControl = fitControl)
+
+plot(adaboost)
+```
+
+## Reporte precision, recall e f-measure no treino e validação. Há uma grande diferença de desempenho no treino/validação? Como você avalia os resultados? Justifique sua resposta.
+
+```{r}
+# realizando predição 
+test_data$prediction <- predict(adaboost, test_data)
+
+# vezes que o modelo acertou na predição de que o candidato seria eleito
+TP <- test_data %>% filter(situacao == "eleito", prediction == "eleito") %>% nrow()
+
+# vezes que o modelo acertou na predição de que o candidato seria nao_eleito
+TN <- test_data %>% filter(situacao == "nao_eleito" , prediction == "nao_eleito" ) %>% nrow()
+
+# vezes que o modelo errou na predição de que o candidato seria nao_eleito
+FP <- test_data %>% filter(situacao == "nao_eleito" , prediction == "eleito") %>% nrow() 
+
+# vezes que o modelo errou na predição de que o candidato seria eleito
+FN <- test_data %>% filter(situacao == "eleito", prediction == "nao_eleito" ) %>% nrow()
+
+# proporção de observações corretamente classificadas
+accuracy <- (TP + TN)/(TP + TN + FP + FN) 
+
+# quantas das observaçoes preditas como positivas são realmente positivas
+precision <- TP / (TP + FP)
+
+# quantas das observaçoes positivas foram corretamente classificadas
+recall <- TP / (TP + FN)
+
+# média harmônica da precisão e recall
+f_measure <- 2 * (precision * recall) / (precision + recall)
+f_measure
+accuracy
+precision
+recall
+confusionMatrix(test_data$prediction, test_data$situacao)
+varImp(adaboost)
+```
+
+## Interprete as saídas dos modelos. Quais atributos parecem ser mais importantes de acordo com cada modelo? 
+
+
