@@ -14,7 +14,7 @@ library(rpart)
 ## Leitura dos dados de treino e teste
 ```{r}
 input <- read.csv("train.csv")
-#test_data <- read.csv("test.csv")
+test_data <- read.csv("test.csv")
 ```
 
 ## Removendo variáveis categóricas dos dados de treino, pois são irrelevantes para a regressão
@@ -30,7 +30,6 @@ input <- input %>% select(-nome, -uf, -estado_civil,
 dataPartition <- createDataPartition(y = input$situacao, p=0.75, list=FALSE)
 
 set.seed(9560)
-## separando o dataframe em treino e teste
 train_data <- input[dataPartition, ]
 test_data <- input[-dataPartition, ]
 ```
@@ -86,17 +85,17 @@ knn_model <- train(situacao ~ .,
                    preProc = c("center", "scale"), 
                    trControl = fitControl)
 
-plot(knn_model)
+knn_model
 ```
 
 ## Regressão Logística
 
 ```{r warning=FALSE}
-reg_logistica <- glm(formula=situacao~.,
+logistic_regression <- glm(formula=situacao~.,
                      data = smote_train, 
                      family=binomial)
 
-plot(reg_logistica)
+logistic_regression
 ```
 
 ## Árvore de decisão
@@ -108,7 +107,7 @@ decision_tree <- train(x = smote_train[, names(smote_train) != "situacao"],
                        trControl = fitControl,
                        control = rpart.control(cp = 0.4))
 
-plot(decision_tree)
+decision_tree
 ```
 
 ## Modelo de Adaboost
@@ -119,46 +118,77 @@ adaboost <- train(x = smote_train[, names(smote_train) != "situacao"],
                   method = "adaboost",
                   trControl = fitControl)
 
-plot(adaboost)
+adaboost
 ```
 
 ## Reporte precision, recall e f-measure no treino e validação. Há uma grande diferença de desempenho no treino/validação? Como você avalia os resultados? Justifique sua resposta.
 
+Para calcular precision, recall e f-measure, precisamos dividir os dados em 4 grupos.
+
+**1º grupo**: classe A verdadeira (TA) - corretamente classificados na classe A.
+
+**2º grupo**: classe A falsa (FA) - erroneamente classificados na classe A.
+
+**3º grupo**: classe B verdadeira (TB) - corretamente classificados na classe B.
+
+**4º grupo**: classe B false (FB) - erroneamente classificados na classe B.
+
+Assumiremos que a classe A corresponde a situação *eleito* e a classe B a situação *nao_eleito*.
+
 ```{r}
-# realizando predição 
-test_data$prediction <- predict(adaboost, test_data)
+# Adicionando a predição aos dados a partir do KNN
+test_data$prediction <- predict(knn_model, test_data)
+```
 
-# vezes que o modelo acertou na predição de que o candidato seria eleito
-TP <- test_data %>% filter(situacao == "eleito", prediction == "eleito") %>% nrow()
+```{r}
+TA <- test_data %>% filter(situacao == "eleito", prediction == "eleito") %>% nrow()
 
-# vezes que o modelo acertou na predição de que o candidato seria nao_eleito
-TN <- test_data %>% filter(situacao == "nao_eleito" , prediction == "nao_eleito" ) %>% nrow()
+FA <- test_data %>% filter(situacao == "nao_eleito" , prediction == "eleito") %>% nrow() 
 
-# vezes que o modelo errou na predição de que o candidato seria nao_eleito
-FP <- test_data %>% filter(situacao == "nao_eleito" , prediction == "eleito") %>% nrow() 
+TB <- test_data %>% filter(situacao == "nao_eleito" , prediction == "nao_eleito" ) %>% nrow()
 
-# vezes que o modelo errou na predição de que o candidato seria eleito
-FN <- test_data %>% filter(situacao == "eleito", prediction == "nao_eleito" ) %>% nrow()
+FB <- test_data %>% filter(situacao == "eleito", prediction == "nao_eleito" ) %>% nrow()
+```
 
-# proporção de observações corretamente classificadas
-accuracy <- (TP + TN)/(TP + TN + FP + FN) 
+```{r}
+# Quantos dos objetos selecionados estão corretos
+precision <- TA / (TA + FA)
 
-# quantas das observaçoes preditas como positivas são realmente positivas
-precision <- TP / (TP + FP)
-
-# quantas das observaçoes positivas foram corretamente classificadas
-recall <- TP / (TP + FN)
+# Quantos dos objetos que deveriam ter sido selecionados foram realmente selecionados
+recall <- TA / (TA + FB)
 
 # média harmônica da precisão e recall
 f_measure <- 2 * (precision * recall) / (precision + recall)
-f_measure
-accuracy
+
 precision
 recall
-confusionMatrix(test_data$prediction, test_data$situacao)
-varImp(adaboost)
+f_measure
 ```
+
+O resultado foi para o modelo KNN foi satisfatório, pois ele conseguiu predizer corretamente o resultado da eleição na maioria dos casos. Um valor de f-measure alto, indica o quão robusto um classificador é, logo, como `f_measure = 0.7085954`, isso indica que o modelo de KNN parece bom preditor. 
 
 ## Interprete as saídas dos modelos. Quais atributos parecem ser mais importantes de acordo com cada modelo? 
 
+```{r}
+varImp(knn_model)
+varImp(logistic_regression)
+varImp(decision_tree)
+varImp(adaboost)
+```
 
+Para o modelo de *KNN*, os atributos: total_despesa, total_receita, quantidade_fornecedores, quantidade_despesas, recursos_de_pessoas_juridicas, quantidade_doacoes, quantidade_doacoes e quantidade_doadores possuem um grande grau de importância.
+
+Para o modelo de *regressão logística*, as atributos: media_receita, media_despesa, quantidade_doadores e total_despesa são as que possuem maior importância.
+
+Para a *árvore de decisão*, as atributos: total_receita, total_despesa e quantidade_fornecedores possuem maior importância.
+
+Para o *adaboost*, as atributos: total_receita e total_despesa possuem os maiores graus de importância.
+
+## Envie seus melhores modelos à competição do Kaggle.
+
+```{r}
+prediction <- predict(knn_model, test_data)  
+data_out <- data.frame(ID = test_data$sequencial_candidato, Predicted = prediction) 
+data_out$ID <-as.character(data_out$ID)  
+data_out %>% write_csv(path = "submission.csv") 
+```
