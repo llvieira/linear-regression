@@ -1,7 +1,14 @@
 ---
-title: "Lab 5"
-author: "Lucas Vieira"
-output: html_document
+title: "Predição de Eleição de Deputados"
+author: "Lucas Lima Vieira"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_float: yes
+  html_notebook:
+    toc: yes
+    toc_float: yes
 ---
 
 ```{r setup, include=FALSE}
@@ -14,7 +21,7 @@ library(rpart)
 ## Leitura dos dados de treino e teste
 ```{r}
 input <- read.csv("train.csv")
-test_data <- read.csv("test.csv")
+test <- read.csv("test.csv")
 ```
 
 ## Removendo variáveis categóricas dos dados de treino, pois são irrelevantes para a regressão
@@ -74,7 +81,7 @@ fitControl <- trainControl(method = "repeatedcv",
                            classProbs = TRUE)
 ```
 
-## Modelo de KNN
+### Modelo de KNN
 
 ```{r}
 k <- expand.grid(k = seq(20, 100, length=81))
@@ -88,7 +95,7 @@ knn_model <- train(situacao ~ .,
 knn_model
 ```
 
-## Regressão Logística
+### Regressão Logística
 
 ```{r warning=FALSE}
 logistic_regression <- glm(formula=situacao~.,
@@ -98,7 +105,7 @@ logistic_regression <- glm(formula=situacao~.,
 logistic_regression
 ```
 
-## Árvore de decisão
+### Árvore de decisão
 
 ```{r}
 decision_tree <- train(x = smote_train[, names(smote_train) != "situacao"],
@@ -110,7 +117,7 @@ decision_tree <- train(x = smote_train[, names(smote_train) != "situacao"],
 decision_tree
 ```
 
-## Modelo de Adaboost
+### Modelo de Adaboost
 
 ```{r}
 adaboost <- train(x = smote_train[, names(smote_train) != "situacao"],
@@ -187,8 +194,8 @@ Para o *adaboost*, as atributos: total_receita e total_despesa possuem os maiore
 ## Envie seus melhores modelos à competição do Kaggle.
 
 ```{r}
-prediction <- predict(knn_model, test_data)  
-data_out <- data.frame(ID = test_data$sequencial_candidato, Predicted = prediction) 
+prediction <- predict(knn_model, test)  
+data_out <- data.frame(ID = test$sequencial_candidato, Predicted = prediction) 
 data_out$ID <-as.character(data_out$ID)  
 data_out %>% write_csv(path = "submission.csv") 
 ```
